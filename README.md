@@ -47,6 +47,25 @@ With this plugin:
 601F=3,set_visual_object_texture %1d% from_png %2d% material_index %3d% //Not all PNG can be loaded
 6020=2,replace_visual_object_model %1d% with_model_from_id %2d%
 6021=2,replace_visual_object_model %1d% with_model_from_dff %2d%
+
+// Visual Object 1.0.3 ?? Writes by MatiDragon
+6022=4,%2d% %3d% %4d% = get_visual_object_scale %1d% 
+6023=4,%2d% %3d% %4d% = get_visual_object_offset %1d%
+6024=4,%2d% %3d% %4d% = get_visual_object_rotation %1d%
+6025=5,%2d% %3d% %4d% %5d% = get_visual_object_distortion %1d%
+6026=2,%2d% = get_visual_object_visible %1d%
+6027=4,get_visual_object_auto_hide %1d% store_dead %2d% store_weapon %3d% store_car %4d%
+6028=5,%2d% %3d% %4d% %5d% = get_visual_object_rgba %1d%
+6029=2,%2d% = get_visual_object_renderer %1d%
+602A=2,set_visual_object_bone %1d% bone_id %2d%
+602B=2,%2d% = get_visual_object_bone %1d%
+602C=3,attach_visual_object %1d% to_char %2d% bone_id %3d%
+602D=2,attach_visual_object %1d% to_vehicle %2d%
+602E=2,attach_visual_object %1d% to_object %2d%
+602F=1,detach_visual_object_to_world %1d%
+6030=5,%5d% = find_closest_visual_object_at %1d% %2d% %3d% radius %4d%
+6031=6,%6d% = find_closest_visual_object_at %1d% %2d% %3d% radius %4d% model %5d%
+6032=6,%6d% = find_closest_visual_object_at %1d% %2d% %3d% radius %4d% dff %5d%
 ```
 [Download Page 🔗](<https://tecoreacvitemoddinggarage.blogspot.com/2026/02/plugin-cleo-visual-object.html>)
 
