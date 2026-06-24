@@ -1334,6 +1334,489 @@ CLEO_Fn(CHANGE_VISUAL_OBJECT_MODEL_DFF)
         }
     }
 }
+
+
+// Writes by MatiDragon <3
+
+
+// ================================= HELPERS ==================================
+
+inline bool GetVisualObjectWorldPos(VisualObject* visual, RwV3d& outPos)
+{
+    if (!visual) return false;
+    
+    if (visual->ped)
+    {
+        if (!visual->ped->m_pRwClump) return false;
+        RpHAnimHierarchy* hier = GetAnimHierarchyFromSkinClump(visual->ped->m_pRwClump);
+        if (!hier) return false;
+        int idx = RpHAnimIDGetIndex(hier, visual->bone_id);
+        if (idx < 0) return false;
+        RwMatrix* boneMat = &hier->pMatrixArray[idx];
+        RwV3d offset = { visual->offset.x, visual->offset.y, visual->offset.z };
+        RwV3dTransformPoints(&outPos, &offset, 1, boneMat);
+        return true;
+    }
+    else if (visual->veh)
+    {
+        if (!visual->veh->m_matrix) return false;
+        RwV3d offset = { visual->offset.x, visual->offset.y, visual->offset.z };
+        RwV3dTransformPoints(&outPos, &offset, 1, (RwMatrix*)visual->veh->m_matrix);
+        return true;
+    }
+    else if (visual->obj)
+    {
+        if (!visual->obj->m_matrix) return false;
+        RwV3d offset = { visual->offset.x, visual->offset.y, visual->offset.z };
+        RwV3dTransformPoints(&outPos, &offset, 1, (RwMatrix*)visual->obj->m_matrix);
+        return true;
+    }
+    else // mundo
+    {
+        outPos.x = visual->offset.x;
+        outPos.y = visual->offset.y;
+        outPos.z = visual->offset.z;
+        return true;
+    }
+}
+
+inline void RemoveVisualObjectFromCurrentList(VisualObject* visual)
+{
+    if (!visual) return;
+
+    if (visual->ped)
+    {
+        PedData* xdata = PedExtended::GetExtData(visual->ped);
+        if (xdata)
+        {
+            for (auto it = xdata->VisualObjects.begin(); it != xdata->VisualObjects.end(); ++it)
+            {
+                if (*it == visual) { xdata->VisualObjects.erase(it); break; }
+            }
+        }
+    }
+    else if (visual->veh)
+    {
+        VehicleData* xdata = VehicleExtended::GetExtData(visual->veh);
+        if (xdata)
+        {
+            for (auto it = xdata->VisualObjects.begin(); it != xdata->VisualObjects.end(); ++it)
+            {
+                if (*it == visual) { xdata->VisualObjects.erase(it); break; }
+            }
+        }
+    }
+    else if (visual->obj)
+    {
+        ObjectData* xdata = ObjectExtended::GetExtData(visual->obj);
+        if (xdata)
+        {
+            for (auto it = xdata->VisualObjects.begin(); it != xdata->VisualObjects.end(); ++it)
+            {
+                if (*it == visual) { xdata->VisualObjects.erase(it); break; }
+            }
+        }
+    }
+    else
+    {
+        for (auto it = ObjWorld.begin(); it != ObjWorld.end(); ++it)
+        {
+            if (*it == visual) { ObjWorld.erase(it); break; }
+        }
+    }
+}
+
+inline void MatrixToEulerZYX(const RwMatrix* matrix, float& rx, float& ry, float& rz)
+{
+    RwV3d right = matrix->right;
+    RwV3d up    = matrix->up;
+    RwV3d at    = matrix->at;
+
+    float sy = -at.z;
+    if (sy > 1.0f) sy = 1.0f;
+    if (sy < -1.0f) sy = -1.0f;
+
+    ry = asinf(sy);
+
+    if (fabsf(sy) < 0.9999f)
+    {
+        rx = atan2f(up.z, at.z);
+        rz = atan2f(right.y, right.x);
+    }
+    else
+    {
+        rx = 0.0f;
+        rz = atan2f(-up.x, up.y);
+    }
+}
+
+// ================================= OPCODES ==================================
+
+CLEO_Fn(GET_VISUAL_OBJECT_SCALE)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    if (visual)
+    {
+        cleo->GetPointerToScriptVar(handle)->f = visual->scale.x;
+        cleo->GetPointerToScriptVar(handle)->f = visual->scale.y;
+        cleo->GetPointerToScriptVar(handle)->f = visual->scale.z;
+    }
+}
+CLEO_Fn(GET_VISUAL_OBJECT_OFFSET)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    if (visual)
+    {
+        cleo->GetPointerToScriptVar(handle)->f = visual->offset.x;
+        cleo->GetPointerToScriptVar(handle)->f = visual->offset.y;
+        cleo->GetPointerToScriptVar(handle)->f = visual->offset.z;
+    }
+}
+CLEO_Fn(GET_VISUAL_OBJECT_ROTATION)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    if (visual)
+    {
+        cleo->GetPointerToScriptVar(handle)->f = visual->rot.x;
+        cleo->GetPointerToScriptVar(handle)->f = visual->rot.y;
+        cleo->GetPointerToScriptVar(handle)->f = visual->rot.z;
+    }
+}
+CLEO_Fn(GET_VISUAL_OBJECT_DISTORTION)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    if (visual)
+    {
+        cleo->GetPointerToScriptVar(handle)->f = visual->dist.x;
+        cleo->GetPointerToScriptVar(handle)->f = visual->dist.y;
+        cleo->GetPointerToScriptVar(handle)->f = visual->dist.z;
+        cleo->GetPointerToScriptVar(handle)->f = visual->dist.w;
+    }
+}
+CLEO_Fn(GET_VISUAL_OBJECT_VISIBLE)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    cleo->GetPointerToScriptVar(handle)->i = (visual && visual->isVisible) ? 1 : 0;
+}
+CLEO_Fn(GET_VISUAL_OBJECT_AUTO_HIDE)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    if (visual)
+    {
+        cleo->GetPointerToScriptVar(handle)->i = visual->hideIfDead ? 1 : 0;
+        cleo->GetPointerToScriptVar(handle)->i = visual->hideIfWeapon ? 1 : 0;
+        cleo->GetPointerToScriptVar(handle)->i = visual->hideIfCar ? 1 : 0;
+    }
+}
+CLEO_Fn(GET_VISUAL_OBJECT_RGBA)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    if (visual)
+    {
+        uint8_t r = 255, g = 255, b = 255, a = 255;
+        RpGeometry* geo = nullptr;
+        if (visual->clump)
+        {
+            RpClumpForAllAtomics(visual->clump, [](RpAtomic* atomic, void* data) -> RpAtomic*
+            {
+                RpGeometry* g = atomic->geometry;
+                if (g && g->matList.numMaterials > 0)
+                {
+                    RwRGBA* col = (RwRGBA*)data;
+                    *col = g->matList.materials[0]->color;
+                    return nullptr; // stop iteration
+                }
+                return atomic;
+            }, &color);
+        }
+        else if (visual->atomic)
+        {
+            RpGeometry* g = visual->atomic->geometry;
+            if (g && g->matList.numMaterials > 0)
+            {
+                color = g->matList.materials[0]->color;
+            }
+        }
+        cleo->GetPointerToScriptVar(handle)->i = color.red;
+        cleo->GetPointerToScriptVar(handle)->i = color.green;
+        cleo->GetPointerToScriptVar(handle)->i = color.blue;
+        cleo->GetPointerToScriptVar(handle)->i = color.alpha;
+    }
+    else
+    {
+        cleo->GetPointerToScriptVar(handle)->i = 0;
+        cleo->GetPointerToScriptVar(handle)->i = 0;
+        cleo->GetPointerToScriptVar(handle)->i = 0;
+        cleo->GetPointerToScriptVar(handle)->i = 0;
+    }
+}
+CLEO_Fn(GET_VISUAL_OBJECT_RENDERER)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    cleo->GetPointerToScriptVar(handle)->i = visual ? (int)visual->renderType : 0;
+}
+
+CLEO_Fn(SET_VISUAL_OBJECT_BONE)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    int newBone = cleo->ReadParam(handle)->i;
+    if (visual) visual->bone_id = newBone;
+}
+CLEO_Fn(GET_VISUAL_OBJECT_BONE)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    cleo->GetPointerToScriptVar(handle)->i = visual ? visual->bone_id : -1;
+}
+
+
+CLEO_Fn(ATTACH_VISUAL_OBJECT_TO_CHAR)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    CPed* ped = CPools::GetPed(cleo->ReadParam(handle)->i);
+    int boneId = cleo->ReadParam(handle)->i;
+
+    if (!visual || !ped) return;
+
+    RemoveVisualObjectFromCurrentList(visual);
+
+    visual->ped = ped;
+    visual->veh = nullptr;
+    visual->obj = nullptr;
+    visual->bone_id = boneId;
+
+    PedData* xdata = PedExtended::GetExtData(ped);
+    if (xdata) xdata->VisualObjects.push_back(visual);
+}
+
+CLEO_Fn(ATTACH_VISUAL_OBJECT_TO_VEHICLE)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    CVehicle* veh = CPools::GetVehicle(cleo->ReadParam(handle)->i);
+
+    if (!visual || !veh) return;
+
+    RemoveVisualObjectFromCurrentList(visual);
+
+    visual->ped = nullptr;
+    visual->veh = veh;
+    visual->obj = nullptr;
+    visual->bone_id = -1;
+
+    VehicleData* xdata = VehicleExtended::GetExtData(veh);
+    if (xdata) xdata->VisualObjects.push_back(visual);
+}
+
+CLEO_Fn(ATTACH_VISUAL_OBJECT_TO_OBJECT)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    CObject* obj = CPools::GetObject(cleo->ReadParam(handle)->i);
+
+    if (!visual || !obj) return;
+
+    RemoveVisualObjectFromCurrentList(visual);
+
+    visual->ped = nullptr;
+    visual->veh = nullptr;
+    visual->obj = obj;
+    visual->bone_id = -1;
+
+    ObjectData* xdata = ObjectExtended::GetExtData(obj);
+    if (xdata) xdata->VisualObjects.push_back(visual);
+}
+
+CLEO_Fn(DETACH_VISUAL_OBJECT_TO_WORLD)
+{
+    VisualObject* visual = (VisualObject*)cleo->ReadParam(handle)->i;
+    if (!visual) return;
+
+    RwFrame* frame = visual->frame;
+    if (visual->clump && visual->renderType == CLUMP_RENDERER)
+        frame = (RwFrame*)visual->clump->object.parent;
+
+    RwV3d worldPos = frame->ltm.pos;
+    float rx, ry, rz;
+    MatrixToEulerZYX(&frame->ltm, rx, ry, rz);
+
+    RemoveVisualObjectFromCurrentList(visual);
+
+    visual->ped = nullptr;
+    visual->veh = nullptr;
+    visual->obj = nullptr;
+    visual->bone_id = -1;
+    visual->offset = worldPos;
+    visual->rot = CVector(rx, ry, rz);
+
+    ObjWorld.push_back(visual);
+}
+
+CLEO_Fn(FIND_CLOSEST_VISUAL_OBJECT)
+{
+    float x = cleo->ReadParam(handle)->f;
+    float y = cleo->ReadParam(handle)->f;
+    float z = cleo->ReadParam(handle)->f;
+    float radius = cleo->ReadParam(handle)->f;
+    
+    VisualObject* closest = nullptr;
+    float closestDistSq = radius * radius;
+    
+    auto checkVisual = [&](VisualObject* visual)
+    {
+        RwV3d pos;
+        if (GetVisualObjectWorldPos(visual, pos))
+        {
+            float dx = pos.x - x, dy = pos.y - y, dz = pos.z - z;
+            float distSq = dx*dx + dy*dy + dz*dz;
+            if (distSq < closestDistSq)
+            {
+                closestDistSq = distSq;
+                closest = visual;
+            }
+        }
+    };
+    
+    
+    for (PedData* xdata : PedExtData)
+    {
+        if (!xdata) continue;
+        for (VisualObject* visual : xdata->VisualObjects)
+            checkVisual(visual);
+    }
+    
+    for (VehicleData* xdata : VehExtData)
+    {
+        if (!xdata) continue;
+        for (VisualObject* visual : xdata->VisualObjects)
+            checkVisual(visual);
+    }
+    
+    for (ObjectData* xdata : ObjExtData)
+    {
+        if (!xdata) continue;
+        for (VisualObject* visual : xdata->VisualObjects)
+            checkVisual(visual);
+    }
+    
+    for (VisualObject* visual : ObjWorld)
+        checkVisual(visual);
+    
+    cleo->GetPointerToScriptVar(handle)->i = closest ? (int)closest : -1;
+}
+
+CLEO_Fn(FIND_CLOSEST_VISUAL_OBJECT_WITH_MODEL)
+{
+    float x = cleo->ReadParam(handle)->f;
+    float y = cleo->ReadParam(handle)->f;
+    float z = cleo->ReadParam(handle)->f;
+    float radius = cleo->ReadParam(handle)->f;
+    int modelId = cleo->ReadParam(handle)->i;
+    
+    VisualObject* closest = nullptr;
+    float closestDistSq = radius * radius;
+    
+    auto checkVisual = [&](VisualObject* visual)
+    {
+        if (visual->model_id != modelId) return;   // just object created with this ID
+        RwV3d pos;
+        if (GetVisualObjectWorldPos(visual, pos))
+        {
+            float dx = pos.x - x, dy = pos.y - y, dz = pos.z - z;
+            float distSq = dx*dx + dy*dy + dz*dz;
+            if (distSq < closestDistSq)
+            {
+                closestDistSq = distSq;
+                closest = visual;
+            }
+        }
+    };
+    
+
+    for (PedData* xdata : PedExtData)
+    {
+        if (!xdata) continue;
+        for (VisualObject* visual : xdata->VisualObjects)
+            checkVisual(visual);
+    }
+
+    for (VehicleData* xdata : VehExtData)
+    {
+        if (!xdata) continue;
+        for (VisualObject* visual : xdata->VisualObjects)
+            checkVisual(visual);
+    }
+
+    for (ObjectData* xdata : ObjExtData)
+    {
+        if (!xdata) continue;
+        for (VisualObject* visual : xdata->VisualObjects)
+            checkVisual(visual);
+    }
+
+    for (VisualObject* visual : ObjWorld)
+        checkVisual(visual);
+    
+    cleo->GetPointerToScriptVar(handle)->i = closest ? (int)closest : -1;
+}
+
+CLEO_Fn(FIND_CLOSEST_VISUAL_OBJECT_WITH_DFF)
+{
+    float x = cleo->ReadParam(handle)->f;
+    float y = cleo->ReadParam(handle)->f;
+    float z = cleo->ReadParam(handle)->f;
+    float radius = cleo->ReadParam(handle)->f;
+    
+    char buf[MAX_STR_LEN];
+    cleoaddon->ReadString(handle, buf, sizeof(buf));
+    for (int i = 0; buf[i]; ++i) if (buf[i] == '\\') buf[i] = '/';
+    const char* filename = strrchr(buf, '/');
+    filename = filename ? filename + 1 : buf;
+    
+    VisualObject* closest = nullptr;
+    float closestDistSq = radius * radius;
+    
+    auto checkVisual = [&](VisualObject* visual)
+    {
+        if (strcmp(visual->dff_name, filename) != 0) return;
+        RwV3d pos;
+        if (GetVisualObjectWorldPos(visual, pos))
+        {
+            float dx = pos.x - x, dy = pos.y - y, dz = pos.z - z;
+            float distSq = dx*dx + dy*dy + dz*dz;
+            if (distSq < closestDistSq)
+            {
+                closestDistSq = distSq;
+                closest = visual;
+            }
+        }
+    };
+    
+
+    for (PedData* xdata : PedExtData)
+    {
+        if (!xdata) continue;
+        for (VisualObject* visual : xdata->VisualObjects)
+            checkVisual(visual);
+    }
+
+    for (VehicleData* xdata : VehExtData)
+    {
+        if (!xdata) continue;
+        for (VisualObject* visual : xdata->VisualObjects)
+            checkVisual(visual);
+    }
+
+    for (ObjectData* xdata : ObjExtData)
+    {
+        if (!xdata) continue;
+        for (VisualObject* visual : xdata->VisualObjects)
+            checkVisual(visual);
+    }
+
+    for (VisualObject* visual : ObjWorld)
+        checkVisual(visual);
+    
+    cleo->GetPointerToScriptVar(handle)->i = closest ? (int)closest : -1;
+}
+
 //--------------------[ END OPCODES ]----------------------
 
 ON_MOD_PRELOAD()
@@ -1429,4 +1912,23 @@ ON_ALL_MODS_LOAD()
     CLEO_RegisterOpcode(0x601F, SET_VISUAL_OBJECT_TEXTURE_PNG);                   // 601F=3,set_visual_object_texture %1d% from_png %2d% material_index %3d% //Not all PNG can be loaded
     CLEO_RegisterOpcode(0x6020, CHANGE_VISUAL_OBJECT_MODEL);                      // 6020=2,replace_visual_object_model %1d% with_model_from_id %2d%
     CLEO_RegisterOpcode(0x6021, CHANGE_VISUAL_OBJECT_MODEL_DFF);                  // 6021=2,replace_visual_object_model %1d% with_model_from_dff %2d%
+
+    // since 1.0.3 ?? Writes by MatiDragon
+    CLEO_RegisterOpcode(0x6022, GET_VISUAL_OBJECT_SCALE);                         // 6022=4,%2d% %3d% %4d% = get_visual_object_scale %1d% 
+    CLEO_RegisterOpcode(0x6023, GET_VISUAL_OBJECT_OFFSET);                        // 6023=4,%2d% %3d% %4d% = get_visual_object_offset %1d%
+    CLEO_RegisterOpcode(0x6024, GET_VISUAL_OBJECT_ROTATION);                      // 6024=4,%2d% %3d% %4d% = get_visual_object_rotation %1d%
+    CLEO_RegisterOpcode(0x6025, GET_VISUAL_OBJECT_DISTORTION);                    // 6025=5,%2d% %3d% %4d% %5d% = get_visual_object_distortion %1d%
+    CLEO_RegisterOpcode(0x6026, GET_VISUAL_OBJECT_VISIBLE);                       // 6026=2,%2d% = get_visual_object_visible %1d%
+    CLEO_RegisterOpcode(0x6027, GET_VISUAL_OBJECT_AUTO_HIDE);                     // 6027=4,get_visual_object_auto_hide %1d% store_dead %2d% store_weapon %3d% store_car %4d%
+    CLEO_RegisterOpcode(0x6028, GET_VISUAL_OBJECT_RGBA);                          // 6028=5,%2d% %3d% %4d% %5d% = get_visual_object_rgba %1d%
+    CLEO_RegisterOpcode(0x6029, GET_VISUAL_OBJECT_RENDERER);                      // 6029=2,%2d% = get_visual_object_renderer %1d%
+    CLEO_RegisterOpcode(0x602A, SET_VISUAL_OBJECT_BONE);                          // 602A=2,set_visual_object_bone %1d% bone_id %2d%
+    CLEO_RegisterOpcode(0x602B, GET_VISUAL_OBJECT_BONE);                          // 602B=2,%2d% = get_visual_object_bone %1d%
+    CLEO_RegisterOpcode(0x602C, ATTACH_VISUAL_OBJECT_TO_CHAR);                    // 602C=3,attach_visual_object %1d% to_char %2d% bone_id %3d%
+    CLEO_RegisterOpcode(0x602D, ATTACH_VISUAL_OBJECT_TO_VEHICLE);                 // 602D=2,attach_visual_object %1d% to_vehicle %2d%
+    CLEO_RegisterOpcode(0x602E, ATTACH_VISUAL_OBJECT_TO_OBJECT);                  // 602E=2,attach_visual_object %1d% to_object %2d%
+    CLEO_RegisterOpcode(0x602F, DETACH_VISUAL_OBJECT_TO_WORLD);                   // 602F=1,detach_visual_object_to_world %1d%
+    CLEO_RegisterOpcode(0x6030, FIND_CLOSEST_VISUAL_OBJECT);                      // 6030=5,%5d% = find_closest_visual_object_at %1d% %2d% %3d% radius %4d%
+    CLEO_RegisterOpcode(0x6031, FIND_CLOSEST_VISUAL_OBJECT_WITH_MODEL);           // 6031=6,%6d% = find_closest_visual_object_at %1d% %2d% %3d% radius %4d% model %5d%
+    CLEO_RegisterOpcode(0x6032, FIND_CLOSEST_VISUAL_OBJECT_WITH_DFF);             // 6032=6,%6d% = find_closest_visual_object_at %1d% %2d% %3d% radius %4d% dff %5d%
 }
