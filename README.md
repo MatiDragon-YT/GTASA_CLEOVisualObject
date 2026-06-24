@@ -48,7 +48,7 @@ With this plugin:
 6020=2,replace_visual_object_model %1d% with_model_from_id %2d%
 6021=2,replace_visual_object_model %1d% with_model_from_dff %2d%
 
-// Visual Object 1.0.3 ?? Writes by MatiDragon
+; Visual Object 1.0.3 (MatiDragon)
 6022=4,%2d% %3d% %4d% = get_visual_object_scale %1d% 
 6023=4,%2d% %3d% %4d% = get_visual_object_offset %1d%
 6024=4,%2d% %3d% %4d% = get_visual_object_rotation %1d%
